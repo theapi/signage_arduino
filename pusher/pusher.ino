@@ -91,6 +91,13 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   }
 }
 
+void signageConfigure() {
+  // Get the config json from SIGNAGE_CONFIG_URL
+
+  // Subscribe to the Pusher channels listed in the config.
+  
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -111,8 +118,10 @@ void setup() {
   webSocket.onEvent(webSocketEvent);
 
   // try ever 5000 again if connection has failed
-  webSocket.setReconnectInterval(5000);
+  webSocket.setReconnectInterval(120000);
 
+  // Config the device according to the dennis signage config page.
+  signageConfigure();
 }
 
 void loop() {
