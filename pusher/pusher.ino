@@ -1,6 +1,6 @@
 
 /*
- * WebSocketClient.ino
+ * Pusher client for the Dennis Signage application
  *
  */
 
@@ -13,7 +13,7 @@
 #include <ESP8266HTTPClient.h>
 #include <WebSocketsClient.h>
 
-
+// Rename example_config.h to config.h
 #include "config.h"
 
 ESP8266WiFiMulti WiFiMulti;
@@ -47,9 +47,14 @@ void onMessage(const char* data) {
   JsonObject& jsonObj = jsonBuffer.parseObject(data);
 
   if (jsonObj.success()) {
-    const char* title = jsonObj["title"];
-    Serial.print("title: "); Serial.println(title);
+    const char* notification_type = jsonObj["notification_type"];
+    Serial.print("notification_type: "); Serial.println(notification_type);
   }
+}
+
+void onRemoteControl(const char* data) {
+  String payload = String(data);
+  signageProcessConfigPayload(payload);
 }
 
 void onMyEvent(const char* data) {
@@ -81,13 +86,18 @@ void handlePusherEvent(uint8_t * payload) {
   if (strcmp(event, "pusher:connection_established") == 0) {
     onPusherConnectionEstablished(data);
   }
+  // Message event.
   else if (strcmp(event, "message") == 0) {
     onMessage(data);
   }
+  // Change channel event.
+  else if (strcmp(event, "remote-control") == 0) {
+    onRemoteControl(data);
+  }
+  // Just for simple testing.
   else if (strcmp(event, "my-event") == 0) {
     onMyEvent(data);
   }
-  // 
     
 }
 
@@ -106,38 +116,10 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   }
 }
 
-void signageConfigure() {
-  // Get the config json from SIGNAGE_CONFIG_URL
-
-  String payload;
-
-  HTTPClient http;
-  Serial.print("[HTTP] begin...\n");
-  // configure traged server and url
-  http.begin(SIGNAGE_CONFIG_URL);
-
-  Serial.print("[HTTP] GET...\n");
-  // start connection and send HTTP header
-  int httpCode = http.GET();
-
-  // httpCode will be negative on error
-  if(httpCode > 0) {
-      // HTTP header has been send and Server response header has been handled
-      Serial.printf("[HTTP] GET... code: %d\n", httpCode);
-
-      // file found at server
-      if(httpCode == HTTP_CODE_OK) {
-          payload = http.getString();
-          Serial.println(payload);
-      }
-  } else {
-      Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-  }
-
-  http.end();
-  
-
-  // Subscribe to the Pusher channels listed in the config.
+/**
+ * Subscribe to the Pusher channels listed in the config json payload.
+ */
+void signageProcessConfigPayload(String payload) {
   StaticJsonBuffer<JSON_BUFFER_SIZE> jsonBuffer;
   JsonObject& jsonObj = jsonBuffer.parseObject(payload);
 
@@ -156,14 +138,53 @@ void signageConfigure() {
 
     configured = 1;
   }
-  
+}
+
+/**
+ * Get the config json from SIGNAGE_CONFIG_URL
+ */
+String signageGetConfigPayload() {
+  String payload;
+
+  HTTPClient http;
+  Serial.print("[HTTP] begin...\n");
+  // configure traged server and url
+  http.begin(SIGNAGE_CONFIG_URL);
+
+  Serial.print("[HTTP] GET...\n");
+  // start connection and send HTTP header
+  int httpCode = http.GET();
+
+  // httpCode will be negative on error
+  if (httpCode > 0) {
+    // HTTP header has been send and Server response header has been handled
+    Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+    // file found at server
+    if (httpCode == HTTP_CODE_OK) {
+        payload = http.getString();
+        Serial.println(payload);
+    }
+  } else {
+    //@todo handle error
+    Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+  }
+  http.end();
+
+  return payload;
+}
+
+/**
+ * Config the device according to the dennis signage config page.
+ */
+void signageConfigure() {
+  signageProcessConfigPayload(signageGetConfigPayload());
+
 }
 
 void setup() {
   Serial.begin(115200);
-
   Serial.setDebugOutput(true);
-
   Serial.println();
 
   WiFiMulti.addAP(WIFI_SID, WIFI_PASWORD);
@@ -178,19 +199,15 @@ void setup() {
   // event handler
   webSocket.onEvent(webSocketEvent);
 
-  // try ever 5000 again if connection has failed
-  webSocket.setReconnectInterval(5000);
-
-  // Config the device according to the dennis signage config page.
-  //signageConfigure();
-
+  // try every so often if connection has failed
+  webSocket.setReconnectInterval(120000);
 }
 
 void loop() {
   webSocket.loop();
 
   if (!configured && pusher_ready) {
-    // Config the device according to the dennis signage config page.
+    // Subscribe to the required Pusher channels.
     signageConfigure();
   }
   
