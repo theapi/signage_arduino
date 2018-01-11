@@ -23,13 +23,21 @@ WebSocketsClient webSocket;
 
 char configured = 0;
 char pusher_ready = 0;
-
+char subscribed_channel[32];
+char subscribed_control[32];
 
 String pusherSubscribeJsonString(char * channel) {
   String json = "{\"event\":\"pusher:subscribe\",\"data\": {\"channel\": \"_C_\"}}";
   json.replace(String("_C_"), String(channel));
   return json;
 }
+
+String pusherUnSubscribeJsonString(char * channel) {
+  String json = "{\"event\":\"pusher:unsubscribe\",\"data\": {\"channel\": \"_C_\"}}";
+  json.replace(String("_C_"), String(channel));
+  return json;
+}
+
 void onPusherConnectionEstablished(const char* data) {
   StaticJsonBuffer<JSON_BUFFER_SIZE> jsonBuffer;
   JsonObject& jsonObj = jsonBuffer.parseObject(data);
@@ -124,9 +132,19 @@ void signageProcessConfigPayload(String payload) {
   JsonObject& jsonObj = jsonBuffer.parseObject(payload);
 
   if (jsonObj.success()) {
+    if (configured) {
+      // Unsubscribe from the existing channels.
+      String unsub_control = pusherSubscribeJsonString(subscribed_control);
+      webSocket.sendTXT(unsub_control);
+      String unsub_channel = pusherSubscribeJsonString(subscribed_channel);
+      webSocket.sendTXT(unsub_channel);
+    }
+    
     const char* channel_channel = jsonObj["channels"][0]["channel_name"];
+    strncpy(subscribed_channel, channel_channel, 32);
     Serial.print("channel_channel: "); Serial.println(channel_channel);
     const char* channel_control = jsonObj["channels"][1]["channel_name"];
+    strncpy(subscribed_control, channel_control, 32);
     Serial.print("channel_control: "); Serial.println(channel_control);
 
     // Subscribe to the 2 channels.
